@@ -1,48 +1,51 @@
 const https = require('https');
 
 // ══════════════════════════════════════
-// VIN CHECK DIGIT ვალიდაცია (პოზიცია 9)
+// CHECK DIGIT (პოზიცია 9, index 8)
 // ══════════════════════════════════════
-function calcCheckDigit(vin) {
-  const vals = {
-    'A':1,'B':2,'C':3,'D':4,'E':5,'F':6,'G':7,'H':8,
-    'J':1,'K':2,'L':3,'M':4,'N':5,'P':7,'R':9,
-    'S':2,'T':3,'U':4,'V':5,'W':6,'X':7,'Y':8,'Z':9,
-    '0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9
-  };
-  const weights = [8,7,6,5,4,3,2,10,0,9,8,7,6,5,4,3,2];
+const CHAR_VALS = {
+  A:1,B:2,C:3,D:4,E:5,F:6,G:7,H:8,
+  J:1,K:2,L:3,M:4,N:5,P:7,R:9,
+  S:2,T:3,U:4,V:5,W:6,X:7,Y:8,Z:9,
+  0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9
+};
+const WEIGHTS = [8,7,6,5,4,3,2,10,0,9,8,7,6,5,4,3,2];
+
+function getCheckDigit(vin) {
   let sum = 0;
   for (let i = 0; i < 17; i++) {
-    const v = vals[vin[i]];
+    const v = CHAR_VALS[vin[i]];
     if (v === undefined) return null;
-    sum += v * weights[i];
+    sum += v * WEIGHTS[i];
   }
-  const rem = sum % 11;
-  return rem === 10 ? 'X' : String(rem);
+  const r = sum % 11;
+  return r === 10 ? 'X' : String(r);
 }
 
-function verifyCheckDigit(vin) {
-  if (!vin || vin.length !== 17) return false;
-  const expected = calcCheckDigit(vin);
-  return expected !== null && vin[8] === expected;
+function checkDigitValid(vin) {
+  const cd = getCheckDigit(vin);
+  return cd !== null && vin[8] === cd;
 }
 
-// თუ check digit არ ემთხვევა, სცადე ყველა შესაძლო სიმბოლო პოზიციაზე
-function tryFixCheckDigit(vin) {
-  if (verifyCheckDigit(vin)) return vin;
-  const candidates = '0123456789ABCDEFGHJKLMNPRSTUVWXYZ'.split('');
-  // პოზიცია 8 (check digit თავად) — ეს ყველაზე ხშირი შეცდომაა
-  for (const c of candidates) {
-    const attempt = vin.slice(0,8) + c + vin.slice(9);
-    if (verifyCheckDigit(attempt)) return attempt;
-  }
-  return null; // ვერ დასწორდა
+// ══════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════
+function fixVin(raw) {
+  return (raw || '').toUpperCase().replace(/\s/g,'')
+    .replace(/I/g,'1').replace(/O/g,'0').replace(/Q/g,'0');
 }
 
+function isValid(vin) {
+  return typeof vin === 'string' && /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
+}
+
+// ══════════════════════════════════════
+// CLAUDE CALL
+// ══════════════════════════════════════
 function callClaude(apiKey, imageBase64, mediaType, prompt) {
   const body = JSON.stringify({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 800,
+    max_tokens: 700,
     temperature: 0,
     messages: [
       {
@@ -74,8 +77,8 @@ function callClaude(apiKey, imageBase64, mediaType, prompt) {
         try {
           const p = JSON.parse(data);
           if (res.statusCode !== 200) { resolve(null); return; }
-          const raw = '{"found":' + p.content.map(b => b.text || '').join('');
-          resolve(JSON.parse(raw.replace(/```json|```/g, '').trim()));
+          const raw = '{"found":' + p.content.map(b => b.text||'').join('');
+          resolve(JSON.parse(raw.replace(/```json|```/g,'').trim()));
         } catch(e) { resolve(null); }
       });
     });
@@ -85,15 +88,33 @@ function callClaude(apiKey, imageBase64, mediaType, prompt) {
   });
 }
 
-function fix(vin) {
-  return (vin || '').toUpperCase().trim().replace(/\s/g, '')
-    .replace(/I/g,'1').replace(/O/g,'0').replace(/Q/g,'0');
+// ══════════════════════════════════════
+// MAJORITY VOTE — სიმბოლო-დონეზე
+// ══════════════════════════════════════
+function majorityVote(vins) {
+  // vins = ['ABC...', 'ABC...', 'ABD...']
+  const result = [];
+  for (let i = 0; i < 17; i++) {
+    const freq = {};
+    for (const v of vins) {
+      const c = v[i];
+      freq[c] = (freq[c] || 0) + 1;
+    }
+    // ყველაზე ხშირი სიმბოლო
+    const sorted = Object.entries(freq).sort((a,b) => b[1]-a[1]);
+    const top = sorted[0];
+    const count = top[1];
+    const total = vins.length;
+    // conf: ყველა ეთანხმება=HIGH, უმრავლესობა=MEDIUM, ნახევარი=LOW
+    const conf = count === total ? 'HIGH' : count > total/2 ? 'MEDIUM' : 'LOW';
+    result.push({ c: top[0], conf });
+  }
+  return result;
 }
 
-function valid(vin) {
-  return /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
-}
-
+// ══════════════════════════════════════
+// MAIN
+// ══════════════════════════════════════
 exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
@@ -107,150 +128,110 @@ exports.handler = async function(event) {
   const { imageBase64, mediaType } = body;
   if (!imageBase64 || !mediaType) return { statusCode: 400, body: JSON.stringify({ error: 'imageBase64 და mediaType საჭიროა.' }) };
 
-  const P1 = `You are a VIN reader. Find the 17-character Vehicle Identification Number in this image.
+  const PROMPT = `Find the VIN (Vehicle Identification Number) in this image.
 
-The VIN may be on: windshield (through glass), door jamb sticker, chassis plate, or any label.
-Dark background is fine. Glass reflection is fine. Read whatever text you can see.
+The VIN is a 17-character code printed on a label, plate, or sticker. It may be on a windshield, door jamb, or chassis. Dark background and glass reflections are normal — focus on reading the text.
 
-Read each character EXACTLY as printed. Then for each character, rate confidence:
-HIGH = clearly visible, no doubt
-MEDIUM = visible but slightly unclear  
-LOW = hard to read
+Read each character exactly as you see it printed. Output each character and your confidence:
+- HIGH: clearly visible, no doubt
+- MEDIUM: visible but slightly unclear
+- LOW: hard to read, uncertain
 
-Never use letters I (→1), O (→0), Q (→0).
+Important rules:
+- Never use letter I (write 1 instead)
+- Never use letter O (write 0 instead)  
+- Never use letter Q (write 0 instead)
+- VIN is exactly 17 characters
 
-Return ONLY JSON, nothing else:
+Return ONLY this JSON (nothing else):
 {"found":true,"vin":"17chars","chars":[{"c":"J","conf":"HIGH"},{"c":"M","conf":"HIGH"},...17 total]}
-If no VIN: {"found":false,"vin":"","chars":[]}`;
 
-  const P2 = `Find the VIN number in this image. Read it character by character.
+If you cannot find a VIN: {"found":false,"vin":"","chars":[]}`;
 
-Note: dark backgrounds, glass, reflections - these do NOT prevent reading. Focus only on the text.
-
-Watch for these look-alikes:
-0 vs D/U, 1 vs L, 2 vs Z, 5 vs S, 6 vs G, 8 vs B
-
-Confidence per character:
-HIGH = clearly readable
-MEDIUM = fairly sure
-LOW = uncertain
-
-Rules: 17 chars, A-Z no I/O/Q, and 0-9.
-
-Return ONLY JSON:
-{"found":true,"vin":"17chars","chars":[{"c":"J","conf":"HIGH"},...17 total]}
-If no VIN: {"found":false,"vin":"","chars":[]}`;
-
-  const [r1, r2] = await Promise.all([
-    callClaude(apiKey, imageBase64, mediaType, P1),
-    callClaude(apiKey, imageBase64, mediaType, P2)
+  // 3 პარალელური სკანი
+  const [r1, r2, r3] = await Promise.all([
+    callClaude(apiKey, imageBase64, mediaType, PROMPT),
+    callClaude(apiKey, imageBase64, mediaType, PROMPT),
+    callClaude(apiKey, imageBase64, mediaType, PROMPT)
   ]);
 
+  // ამოიღე ვალიდური VIN-ები
   function extract(r) {
     if (!r || !r.found || !r.vin) return null;
-    let vin = fix(r.vin);
-    if (!valid(vin)) return null;
+    const vin = fixVin(r.vin);
+    if (!isValid(vin)) return null;
+    const chars = (r.chars && r.chars.length === 17)
+      ? r.chars.map(ch => ({ c: fixVin(ch.c||'?')[0]||'?', conf: ch.conf||'MEDIUM' }))
+      : vin.split('').map(c => ({ c, conf: 'MEDIUM' }));
+    return { vin, chars };
+  }
 
-    let checkFixed = false;
-    if (!verifyCheckDigit(vin)) {
-      const fixed = tryFixCheckDigit(vin);
-      if (fixed) {
-        vin = fixed;
-        checkFixed = true;
+  const results = [r1, r2, r3].map(extract).filter(Boolean);
+
+  if (results.length === 0) {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        found: false, vin: '', chars: [], confidence: 0,
+        wmi:'', vds:'', vis:'',
+        notes: 'VIN ვერ მოიძებნა. სცადეთ: ახლოდან გადაიღეთ / კარგი განათება / VIN კარგად მოხვდეს კადრში.'
+      })
+    };
+  }
+
+  const vins = results.map(r => r.vin);
+  const confs = results.map(r => r.chars.map(c => c.conf));
+
+  // majority vote სიმბოლო-დონეზე
+  let finalChars = majorityVote(vins);
+  let finalVin = finalChars.map(c => c.c).join('');
+
+  // check digit ვალიდაცია
+  const cdValid = checkDigitValid(finalVin);
+  let cdFixed = false;
+
+  if (!cdValid) {
+    // სცადე check digit-ის ავტომატური კორექცია
+    const CHARS = '0123456789ABCDEFGHJKLMNPRSTUVWXYZ';
+    for (const c of CHARS) {
+      const attempt = finalVin.slice(0,8) + c + finalVin.slice(9);
+      if (checkDigitValid(attempt)) {
+        finalVin = attempt;
+        finalChars[8] = { c, conf: 'MEDIUM' };
+        cdFixed = true;
+        break;
       }
     }
-
-    const chars = (r.chars && r.chars.length === 17)
-      ? r.chars.map((ch, i) => {
-          let c = fix(ch.c || '?')[0] || '?';
-          // check digit პოზიციაზე გამოვიყენოთ გამოთვლილი მნიშვნელობა
-          if (i === 8) c = vin[8];
-          return { c, conf: checkFixed && i === 8 ? 'MEDIUM' : (ch.conf || 'MEDIUM') };
-        })
-      : vin.split('').map((c, i) => ({ c, conf: i === 8 && checkFixed ? 'MEDIUM' : 'MEDIUM' }));
-
-    return { vin, chars, checkValid: verifyCheckDigit(vin) };
   }
 
-  const v1 = extract(r1);
-  const v2 = extract(r2);
+  // match სტატუსი
+  const allMatch = vins.every(v => v === vins[0]);
+  const matchCount = vins.filter(v => v === finalVin).length;
+  const matchStatus = allMatch ? 'FULL_MATCH' :
+    matchCount >= 2 ? 'MAJORITY_MATCH' : 'PARTIAL_MATCH';
 
-  if (!v1 && !v2) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        found: false, vin: '', chars: [], confidence: 0,
-        wmi: '', vds: '', vis: '',
-        notes: 'VIN ვერ მოიძებნა.\nსცადეთ: ახლოდან გადაიღეთ / კარგი განათება / VIN კარგად მოხვდეს კადრში.'
-      })
-    };
-  }
-
-  // შეჯერება — სიმბოლო-დონეზე
-  let finalChars, matchStatus;
-
-  if (v1 && v2) {
-    if (v1.vin === v2.vin) {
-      // სრული დამთხვევა — HIGH
-      finalChars = v1.chars.map((ch, i) => {
-        const s1 = ch.conf, s2 = v2.chars[i].conf;
-        const best = ({HIGH:2,MEDIUM:1,LOW:0}[s1]||0) >= ({HIGH:2,MEDIUM:1,LOW:0}[s2]||0) ? s1 : s2;
-        return { c: ch.c, conf: best === 'LOW' ? 'MEDIUM' : 'HIGH' };
-      });
-      matchStatus = 'FULL_MATCH';
-    } else {
-      // ნაწილობრივი — სიმბოლო-დონე
-      const score = { HIGH:2, MEDIUM:1, LOW:0 };
-      finalChars = v1.chars.map((ch, i) => {
-        const s1 = score[ch.conf] || 0;
-        const s2 = score[v2.chars[i].conf] || 0;
-        if (ch.c === v2.chars[i].c) {
-          return { c: ch.c, conf: 'HIGH' };
-        } else {
-          return { c: s1 >= s2 ? ch.c : v2.chars[i].c, conf: 'LOW' };
-        }
-      });
-      matchStatus = 'PARTIAL_MATCH';
-    }
-  } else {
-    const only = v1 || v2;
-    finalChars = only.chars.map(ch => ({
-      c: ch.c,
-      conf: ch.conf === 'HIGH' ? 'MEDIUM' : ch.conf === 'MEDIUM' ? 'MEDIUM' : 'LOW'
-    }));
-    matchStatus = 'SINGLE_RESULT';
-  }
-
-  const finalVin = finalChars.map(c => c.c).join('');
-  if (!valid(finalVin)) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        found: false, vin: '', chars: [], confidence: 0,
-        wmi: '', vds: '', vis: '',
-        notes: 'ამოღებული კოდი ვალიდური VIN არ არის. გამოიყენეთ კორექტირება.'
-      })
-    };
-  }
-
-  const s = { HIGH:2, MEDIUM:1, LOW:0 };
-  const avg = finalChars.reduce((a,c) => a + (s[c.conf]||0), 0) / 17;
-  const bonus = matchStatus === 'FULL_MATCH' ? 20 : matchStatus === 'PARTIAL_MATCH' ? 0 : -10;
-  const checkOk = verifyCheckDigit(finalVin);
-  const checkBonus = checkOk ? 10 : -15;
-  const confidence = Math.min(99, Math.round(50 + avg * 20 + bonus + checkBonus));
+  // confidence
+  const scoreMap = { HIGH: 2, MEDIUM: 1, LOW: 0 };
+  const avg = finalChars.reduce((s,c) => s + (scoreMap[c.conf]||0), 0) / 17;
+  const matchBonus = allMatch ? 20 : matchCount >= 2 ? 10 : 0;
+  const cdBonus = checkDigitValid(finalVin) ? 10 : -15;
+  const confidence = Math.min(99, Math.round(50 + avg * 20 + matchBonus + cdBonus));
 
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      found: true, vin: finalVin, chars: finalChars, confidence,
-      wmi: finalVin.slice(0,3), vds: finalVin.slice(3,9), vis: finalVin.slice(9,17),
+      found: true,
+      vin: finalVin,
+      chars: finalChars,
+      confidence,
+      wmi: finalVin.slice(0,3),
+      vds: finalVin.slice(3,9),
+      vis: finalVin.slice(9,17),
       matchStatus,
-      checkDigitValid: checkOk,
-      notes: `scan1: ${v1?v1.vin:'—'} | scan2: ${v2?v2.vin:'—'} | ${matchStatus} | check: ${checkOk?'✓':'✗'}`
+      checkDigitValid: checkDigitValid(finalVin),
+      notes: `scans: [${vins.join(' | ')}] | ${matchStatus} | check:${checkDigitValid(finalVin)?'✓':'✗'}${cdFixed?' (auto-fixed)':''}`
     })
   };
 };

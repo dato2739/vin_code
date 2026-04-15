@@ -1099,39 +1099,47 @@ function showError(msg) {
 function showResult(r) {
   currentVin = r.vin;
 
-  // ფერადი სიმბოლოები კონფიდენსის მიხედვით
-  const chars = r.chars && r.chars.length === 17 ? r.chars : r.vin.split('').map(c => ({c, conf:'HIGH'}));
+  const chars = r.chars && r.chars.length === 17
+    ? r.chars
+    : r.vin.split('').map(c => ({ c, conf: 'HIGH' }));
 
-  // HIGH=მწვანე, MEDIUM=ყვითელი, LOW=წითელი
-  const confColor = { HIGH: 'var(--green)', MEDIUM: 'var(--accent)', LOW: 'var(--danger)' };
-  const confBg    = { HIGH: 'var(--green2)', MEDIUM: 'var(--accent2)', LOW: 'var(--danger2)' };
+  const colMap = { HIGH: 'var(--green)', MEDIUM: 'var(--accent)', LOW: 'var(--danger)' };
+  const bgMap  = { HIGH: 'var(--green2)', MEDIUM: 'var(--accent2)', LOW: 'var(--danger2)' };
 
-  function renderSeg(startIdx, endIdx, segClass) {
-    return `<span class="vin-seg ${segClass}">${
-      chars.slice(startIdx, endIdx).map(ch => {
-        const col = confColor[ch.conf] || confColor.HIGH;
-        const bg  = confBg[ch.conf]    || confBg.HIGH;
-        return `<span class="vc" style="color:${col};background:${bg}" title="${ch.conf}">${ch.c}</span>`;
-      }).join('')
-    }</span>`;
+  // სიმბოლოების render — თითოეულზე კლიკი = რედაქტირება
+  function renderChars(chs) {
+    return chs.map((ch, i) => {
+      const col = colMap[ch.conf] || colMap.HIGH;
+      const bg  = bgMap[ch.conf]  || bgMap.HIGH;
+      return `<span class="vc vc-edit" data-idx="${i}"
+        style="color:${col};background:${bg};cursor:pointer;"
+        title="${ch.conf} — დააჭირეთ შესაცვლელად">${ch.c}</span>`;
+    }).join('');
   }
 
   vinDisplay.innerHTML =
-    renderSeg(0, 3,  'seg-wmi') +
-    renderSeg(3, 9,  'seg-vds') +
-    renderSeg(9, 17, 'seg-vis');
+    `<span class="vin-seg seg-wmi">${renderChars(chars.slice(0,3))}</span>` +
+    `<span class="vin-seg seg-vds">${renderChars(chars.slice(3,9))}</span>` +
+    `<span class="vin-seg seg-vis">${renderChars(chars.slice(9,17))}</span>`;
 
-  // legend
+  // სიმბოლოზე კლიკი — popup რედაქტორი
+  vinDisplay.querySelectorAll('.vc-edit').forEach(el => {
+    el.addEventListener('click', function() {
+      const idx = parseInt(this.dataset.idx);
+      openCharEditor(idx, chars);
+    });
+  });
+
   vinFull.innerHTML = `
     სრული კოდი: <span style="font-weight:600">${r.vin}</span>
-    &nbsp;&nbsp;
+    &nbsp;
     <span style="font-size:11px;font-family:var(--mono);">
-      <span style="color:var(--green)">■</span> ზუსტი
-      &nbsp;
-      <span style="color:var(--accent)">■</span> სავარაუდო
-      &nbsp;
+      <span style="color:var(--green)">■</span> ზუსტი &nbsp;
+      <span style="color:var(--accent)">■</span> სავარაუდო &nbsp;
       <span style="color:var(--danger)">■</span> გაურკვეველი
-    </span>`;
+    </span>
+    &nbsp;
+    <span style="font-size:10px;font-family:var(--mono);color:var(--muted);">— სიმბოლოზე დაჭერით შეცვლა</span>`;
 
   const conf = Math.round(r.confidence||0);
   confPct.textContent = conf+'%';
@@ -1142,33 +1150,136 @@ function showResult(r) {
   if(r.wmi) addRow('WMI — მწარმოებელი', r.wmi);
   if(r.vds) addRow('VDS — მოდელი / ძრავი', r.vds);
   if(r.vis) addRow('VIS — სერიული ნომერი', r.vis);
-  if(r.location) addRow('მდებარეობა სურათში', r.location);
 
-  resultStatus.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;"></span><span style="font-family:var(--mono);font-size:11px;color:var(--green)">ნაპოვნია</span>${
-    r.matchStatus === 'FULL_MATCH' ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 2/2 დამთხვევა</span>' :
-    r.matchStatus === 'PARTIAL_MATCH' ? '<span style="font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent2);padding:2px 7px;border-radius:8px;margin-left:6px;">⚠ ნაწილობრივი</span>' :
-    '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--s2);padding:2px 7px;border-radius:8px;margin-left:6px;">1 სკანი</span>'
-  }${
-    r.checkDigitValid === true  ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:4px;">✓ check digit</span>' :
-    r.checkDigitValid === false ? '<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:4px;">✗ check digit</span>' : ''
-  }`;
+  resultStatus.innerHTML =
+    `<span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;"></span>` +
+    `<span style="font-family:var(--mono);font-size:11px;color:var(--green)">ნაპოვნია</span>` +
+    (r.matchStatus === 'FULL_MATCH'     ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 3/3</span>` :
+     r.matchStatus === 'MAJORITY_MATCH' ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 2/3</span>` :
+     `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:6px;">⚠ 1/3</span>`) +
+    (r.checkDigitValid
+      ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:4px;">✓ check</span>`
+      : `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:4px;">✗ check</span>`);
 
   vinResult.style.display = 'block';
   vinResult.classList.add('anim-in');
   emptyState.style.display = 'none';
+  editVinWrap.style.display = 'none';
 
   setStep(3);
   renderSites(r.vin);
   showQuickLinks(r.vin);
 
-  // analysis section გამოჩენა
   document.getElementById('analysisVinLabel').textContent = r.vin;
   analyzeResult.style.display = 'none';
   analyzeError.style.display = 'none';
   analyzeLoading.style.display = 'none';
   analyzeBtn.disabled = false;
   analysisSection.style.display = 'block';
-  analysisSection.classList.add('anim-in');
+}
+
+// სიმბოლოს inline რედაქტორი
+let currentChars = null;
+
+function openCharEditor(idx, chars) {
+  currentChars = chars.map(c => ({...c}));
+
+  // popup შევქმნათ
+  const existing = document.getElementById('charEditorPopup');
+  if (existing) existing.remove();
+
+  const popup = document.createElement('div');
+  popup.id = 'charEditorPopup';
+  popup.style.cssText = `
+    position:fixed; inset:0; background:rgba(0,0,0,0.7);
+    display:flex; align-items:center; justify-content:center; z-index:9999;
+  `;
+
+  popup.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:var(--r2);padding:24px;min-width:280px;max-width:340px;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;">
+        პოზიცია ${idx+1}/17 — ${idx<3?'WMI':idx<9?'VDS':'VIS'}
+      </div>
+      <div style="font-family:var(--mono);font-size:28px;letter-spacing:2px;margin-bottom:16px;display:flex;gap:4px;flex-wrap:wrap;">
+        ${currentChars.map((ch,i) => {
+          const col = i===idx ? '#000' : ({HIGH:'var(--green)',MEDIUM:'var(--accent)',LOW:'var(--danger)'}[ch.conf]||'var(--green)');
+          const bg  = i===idx ? 'var(--accent)' : ({HIGH:'var(--green2)',MEDIUM:'var(--accent2)',LOW:'var(--danger2)'}[ch.conf]||'var(--green2)');
+          return `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:32px;border-radius:4px;color:${col};background:${bg};font-size:16px;">${ch.c}</span>`;
+        }).join('')}
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;color:var(--muted);font-family:var(--mono);display:block;margin-bottom:6px;">
+          შეცვალეთ სიმბოლო (პოზიცია ${idx+1}):
+        </label>
+        <input id="charInput" type="text" maxlength="1"
+          value="${currentChars[idx].c}"
+          style="width:100%;padding:10px 14px;background:var(--s2);border:1px solid var(--accent3);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:24px;letter-spacing:2px;text-align:center;text-transform:uppercase;outline:none;"
+          autocomplete="off" autocorrect="off" spellcheck="false"/>
+        <div id="charHint" style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--muted);min-height:16px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="charConfirm" style="flex:1;padding:10px;background:var(--accent);color:#000;border:none;border-radius:var(--r);font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;">
+          დადასტურება
+        </button>
+        <button id="charCancel" style="padding:10px 16px;background:transparent;border:1px solid var(--border2);border-radius:var(--r);color:var(--muted);font-family:var(--mono);font-size:12px;cursor:pointer;">
+          გაუქმება
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(popup);
+
+  const input = popup.querySelector('#charInput');
+  const hint  = popup.querySelector('#charHint');
+  const confirmBtn = popup.querySelector('#charConfirm');
+
+  input.focus(); input.select();
+
+  input.addEventListener('input', function() {
+    const val = this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    this.value = val;
+    if (!val) { hint.textContent = ''; confirmBtn.disabled = true; return; }
+    if (/[IOQ]/.test(val)) {
+      hint.textContent = 'I, O, Q VIN-ში დაუშვებელია';
+      hint.style.color = 'var(--danger)';
+      confirmBtn.disabled = true;
+    } else {
+      hint.textContent = `სიმბოლო: ${val}`;
+      hint.style.color = 'var(--green)';
+      confirmBtn.disabled = false;
+    }
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !confirmBtn.disabled) applyChar();
+    if (e.key === 'Escape') popup.remove();
+  });
+
+  confirmBtn.addEventListener('click', applyChar);
+  popup.querySelector('#charCancel').addEventListener('click', () => popup.remove());
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+
+  function applyChar() {
+    const val = input.value.toUpperCase();
+    if (!val || /[IOQ]/.test(val)) return;
+    currentChars[idx] = { c: val, conf: 'HIGH' };
+    popup.remove();
+    applyManualChars(currentChars);
+  }
+}
+
+function applyManualChars(chars) {
+  const vin = chars.map(c => c.c).join('');
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return;
+  const cdOk = checkDigitValid(vin);
+  showResult({
+    vin, chars,
+    confidence: 100,
+    wmi: vin.slice(0,3), vds: vin.slice(3,9), vis: vin.slice(9,17),
+    matchStatus: 'MANUAL',
+    checkDigitValid: cdOk,
+    notes: `ხელით კორექტირებული | check:${cdOk?'✓':'✗'}`
+  });
 }
 
 function addRow(label, value) {
@@ -1216,6 +1327,11 @@ function calcCheckDigit(vin) {
   }
   const rem = sum % 11;
   return rem === 10 ? 'X' : String(rem);
+}
+
+function checkDigitValid(vin) {
+  const cd = calcCheckDigit(vin);
+  return cd !== null && vin[8] === cd;
 }
 
 function isValidVin(vin) {

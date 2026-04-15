@@ -1148,6 +1148,9 @@ function showResult(r) {
     r.matchStatus === 'FULL_MATCH' ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 2/2 დამთხვევა</span>' :
     r.matchStatus === 'PARTIAL_MATCH' ? '<span style="font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent2);padding:2px 7px;border-radius:8px;margin-left:6px;">⚠ ნაწილობრივი</span>' :
     '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--s2);padding:2px 7px;border-radius:8px;margin-left:6px;">1 სკანი</span>'
+  }${
+    r.checkDigitValid === true  ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:4px;">✓ check digit</span>' :
+    r.checkDigitValid === false ? '<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:4px;">✗ check digit</span>' : ''
   }`;
 
   vinResult.style.display = 'block';
@@ -1197,6 +1200,24 @@ const editConfirmBtn = document.getElementById('editConfirmBtn');
 const editCancelBtn  = document.getElementById('editCancelBtn');
 const editVinHint    = document.getElementById('editVinHint');
 
+function calcCheckDigit(vin) {
+  const vals = {
+    'A':1,'B':2,'C':3,'D':4,'E':5,'F':6,'G':7,'H':8,
+    'J':1,'K':2,'L':3,'M':4,'N':5,'P':7,'R':9,
+    'S':2,'T':3,'U':4,'V':5,'W':6,'X':7,'Y':8,'Z':9,
+    '0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9
+  };
+  const weights = [8,7,6,5,4,3,2,10,0,9,8,7,6,5,4,3,2];
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const v = vals[vin[i]];
+    if (v === undefined) return null;
+    sum += v * weights[i];
+  }
+  const rem = sum % 11;
+  return rem === 10 ? 'X' : String(rem);
+}
+
 function isValidVin(vin) {
   return vin.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
 }
@@ -1226,8 +1247,10 @@ editVinInput.addEventListener('input', function() {
     this.classList.remove('valid','invalid');
     editConfirmBtn.disabled = true;
   } else if (isValidVin(val)) {
-    editVinHint.textContent = `✓ სწორი VIN — ${len}/17`;
-    editVinHint.className = 'edit-vin-hint ok';
+    const cd = calcCheckDigit(val);
+    const cdOk = cd === val[8];
+    editVinHint.textContent = `✓ სწორი VIN — ${len}/17` + (cdOk ? ' • ✓ check digit' : ' • ⚠ check digit არ ემთხვევა (შეამოწმეთ)');
+    editVinHint.className = 'edit-vin-hint ' + (cdOk ? 'ok' : '');
     this.classList.add('valid'); this.classList.remove('invalid');
     editConfirmBtn.disabled = false;
   } else if (/[IOQ]/.test(val)) {

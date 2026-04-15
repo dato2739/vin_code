@@ -1,5 +1,44 @@
 const https = require('https');
 
+// ══════════════════════════════════════
+// VIN CHECK DIGIT ვალიდაცია (პოზიცია 9)
+// ══════════════════════════════════════
+function calcCheckDigit(vin) {
+  const vals = {
+    'A':1,'B':2,'C':3,'D':4,'E':5,'F':6,'G':7,'H':8,
+    'J':1,'K':2,'L':3,'M':4,'N':5,'P':7,'R':9,
+    'S':2,'T':3,'U':4,'V':5,'W':6,'X':7,'Y':8,'Z':9,
+    '0':0,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9
+  };
+  const weights = [8,7,6,5,4,3,2,10,0,9,8,7,6,5,4,3,2];
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const v = vals[vin[i]];
+    if (v === undefined) return null;
+    sum += v * weights[i];
+  }
+  const rem = sum % 11;
+  return rem === 10 ? 'X' : String(rem);
+}
+
+function verifyCheckDigit(vin) {
+  if (!vin || vin.length !== 17) return false;
+  const expected = calcCheckDigit(vin);
+  return expected !== null && vin[8] === expected;
+}
+
+// თუ check digit არ ემთხვევა, სცადე ყველა შესაძლო სიმბოლო პოზიციაზე
+function tryFixCheckDigit(vin) {
+  if (verifyCheckDigit(vin)) return vin;
+  const candidates = '0123456789ABCDEFGHJKLMNPRSTUVWXYZ'.split('');
+  // პოზიცია 8 (check digit თავად) — ეს ყველაზე ხშირი შეცდომაა
+  for (const c of candidates) {
+    const attempt = vin.slice(0,8) + c + vin.slice(9);
+    if (verifyCheckDigit(attempt)) return attempt;
+  }
+  return null; // ვერ დასწორდა
+}
+
 function callClaude(apiKey, imageBase64, mediaType, prompt) {
   const body = JSON.stringify({
     model: 'claude-sonnet-4-20250514',
@@ -109,12 +148,28 @@ If no VIN: {"found":false,"vin":"","chars":[]}`;
 
   function extract(r) {
     if (!r || !r.found || !r.vin) return null;
-    const vin = fix(r.vin);
+    let vin = fix(r.vin);
     if (!valid(vin)) return null;
+
+    let checkFixed = false;
+    if (!verifyCheckDigit(vin)) {
+      const fixed = tryFixCheckDigit(vin);
+      if (fixed) {
+        vin = fixed;
+        checkFixed = true;
+      }
+    }
+
     const chars = (r.chars && r.chars.length === 17)
-      ? r.chars.map(ch => ({ c: fix(ch.c || '?')[0] || '?', conf: ch.conf || 'MEDIUM' }))
-      : vin.split('').map(c => ({ c, conf: 'MEDIUM' }));
-    return { vin, chars };
+      ? r.chars.map((ch, i) => {
+          let c = fix(ch.c || '?')[0] || '?';
+          // check digit პოზიციაზე გამოვიყენოთ გამოთვლილი მნიშვნელობა
+          if (i === 8) c = vin[8];
+          return { c, conf: checkFixed && i === 8 ? 'MEDIUM' : (ch.conf || 'MEDIUM') };
+        })
+      : vin.split('').map((c, i) => ({ c, conf: i === 8 && checkFixed ? 'MEDIUM' : 'MEDIUM' }));
+
+    return { vin, chars, checkValid: verifyCheckDigit(vin) };
   }
 
   const v1 = extract(r1);
@@ -183,7 +238,9 @@ If no VIN: {"found":false,"vin":"","chars":[]}`;
   const s = { HIGH:2, MEDIUM:1, LOW:0 };
   const avg = finalChars.reduce((a,c) => a + (s[c.conf]||0), 0) / 17;
   const bonus = matchStatus === 'FULL_MATCH' ? 20 : matchStatus === 'PARTIAL_MATCH' ? 0 : -10;
-  const confidence = Math.min(99, Math.round(50 + avg * 20 + bonus));
+  const checkOk = verifyCheckDigit(finalVin);
+  const checkBonus = checkOk ? 10 : -15;
+  const confidence = Math.min(99, Math.round(50 + avg * 20 + bonus + checkBonus));
 
   return {
     statusCode: 200,
@@ -192,7 +249,8 @@ If no VIN: {"found":false,"vin":"","chars":[]}`;
       found: true, vin: finalVin, chars: finalChars, confidence,
       wmi: finalVin.slice(0,3), vds: finalVin.slice(3,9), vis: finalVin.slice(9,17),
       matchStatus,
-      notes: `scan1: ${v1?v1.vin:'—'} | scan2: ${v2?v2.vin:'—'} | ${matchStatus}`
+      checkDigitValid: checkOk,
+      notes: `scan1: ${v1?v1.vin:'—'} | scan2: ${v2?v2.vin:'—'} | ${matchStatus} | check: ${checkOk?'✓':'✗'}`
     })
   };
 };

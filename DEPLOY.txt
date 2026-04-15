@@ -1,0 +1,101 @@
+================================================================
+VIN ანალიზატორი — Netlify დეპლოიმენტის ინსტრუქცია
+================================================================
+
+
+── პროექტის სტრუქტურა ──────────────────────────────────────────
+
+vin-analyzer/
+├── index.html                  ← მთავარი გვერდი (frontend)
+├── netlify.toml                ← Netlify კონფიგურაცია
+└── netlify/
+    └── functions/
+        └── scan.js             ← backend function (API გასაღები აქ იმალება)
+
+
+── ნაბიჯი 1 — GitHub Repo ──────────────────────────────────────
+
+1. გახსენით https://github.com
+2. დააჭირეთ "New repository" (მარჯვენა ზედა კუთხე → "+")
+3. სახელი: vin-analyzer
+4. Public ან Private — თქვენი არჩევანი
+5. "Create repository" დააჭირეთ
+
+ფაილების ატვირთვა:
+6. "uploading an existing file" დააჭირეთ
+7. ატვირთეთ სამივე ფაილი სწორი სტრუქტურით:
+   - index.html
+   - netlify.toml
+   - netlify/functions/scan.js
+
+   ⚠️ ᲛᲜᲘᲨᲕᲜᲔᲚᲝᲕᲐᲜᲘᲐ: netlify/functions/ საქაღალდე
+   GitHub-ზე ასე ატვირთეთ:
+   - "Add file" → "Create new file"
+   - სახელის ველში ჩაწერეთ: netlify/functions/scan.js
+   - ჩასვით scan.js-ის შინაარსი
+   - "Commit changes" დააჭირეთ
+
+   შემდეგ ატვირთეთ index.html და netlify.toml პირდაპირ.
+
+
+── ნაბიჯი 2 — Netlify-ზე დაკავშირება ─────────────────────────
+
+1. გახსენით https://netlify.com
+2. შედით ანგარიშში (ან "Sign up" → "Continue with GitHub")
+3. Dashboard-ზე: "Add new site" → "Import an existing project"
+4. "Deploy with GitHub" დააჭირეთ
+5. GitHub-ს გასცეთ წვდომა (თუ პირველად)
+6. მოძებნეთ და აირჩიეთ "vin-analyzer" repo
+7. Build settings ავტომატურად ივსება netlify.toml-იდან
+8. "Deploy site" დააჭირეთ
+
+
+── ნაბიჯი 3 — API გასაღების დამატება ─────────────────────────
+
+ეს ყველაზე მნიშვნელოვანი ნაბიჯია!
+
+1. Netlify Dashboard → თქვენი site → "Site configuration"
+2. მარცხენა მენიუ: "Environment variables"
+3. "Add a variable" დააჭირეთ
+4. Key:   ANTHROPIC_API_KEY
+   Value:  sk-ant-api03-... (თქვენი გასაღები)
+5. "Save" დააჭირეთ
+
+API გასაღები სად მოიძიოთ:
+→ https://console.anthropic.com/settings/keys
+→ "Create Key" → სახელი → "Create Key"
+→ გასაღები მხოლოდ ერთხელ ჩანს, შეინახეთ!
+
+
+── ნაბიჯი 4 — Redeploy ────────────────────────────────────────
+
+Environment variable-ის დამატების შემდეგ საჭიროა redeploy:
+
+1. Netlify Dashboard → "Deploys"
+2. "Trigger deploy" → "Deploy site"
+3. დაელოდეთ "Published" სტატუსს (~30 წამი)
+
+
+── ნაბიჯი 5 — მზადაა! ─────────────────────────────────────────
+
+Netlify გასცემს ლინკს სახით:
+https://random-name-123.netlify.app
+
+სურვილის შემთხვევაში შეცვალეთ:
+Site configuration → "Change site name"
+→ https://vin-analyzer.netlify.app
+
+
+── პრობლემების მოგვარება ───────────────────────────────────────
+
+"Function not found" შეცდომა:
+→ შეამოწმეთ netlify/functions/scan.js სწორ გზაზეა
+
+"API გასაღები კონფიგურირებული არ არის" შეცდომა:
+→ Environment variables-ში ANTHROPIC_API_KEY სწორად არის?
+→ Redeploy გაუშვით
+
+"500 Internal Server Error":
+→ Netlify Dashboard → Functions → scan → ლოგები ნახეთ
+
+================================================================

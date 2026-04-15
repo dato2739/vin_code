@@ -354,6 +354,33 @@ body::before {
 
 
 
+/* ══ ANALYSIS ════════════════════════════ */
+.analyze-btn-wrap { margin-bottom:16px; }
+.analyze-btn {
+  padding:13px 28px;
+  background:var(--accent); color:#000;
+  border:none; border-radius:var(--r);
+  font-family:var(--sans); font-size:14px; font-weight:700;
+  cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  transition:opacity .15s, transform .15s, box-shadow .15s;
+}
+.analyze-btn:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(232,255,71,.22); }
+.analyze-btn:disabled { opacity:.35; cursor:not-allowed; }
+.analyze-loading {
+  display:flex; align-items:center; gap:12px;
+  padding:20px; font-family:var(--mono); font-size:13px; color:var(--muted);
+}
+.spinner-lg {
+  width:20px; height:20px; flex-shrink:0;
+  border:2px solid var(--border2); border-top-color:var(--accent);
+  border-radius:50%; animation:spin .7s linear infinite;
+}
+#buyerTips li { font-size:13px; color:var(--muted); line-height:1.55; }
+#buyerTips li::marker { color:var(--accent); }
+@media(max-width:700px){
+  #analyzeResult > div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns:1fr !important; }
+}
+
 /* ══ FOOTER HINT ══════════════════════════ */
 .footer-hint {
   margin-top:48px; padding:16px 18px;
@@ -534,6 +561,79 @@ body::before {
       </div>
     </div>
 
+  </div>
+
+  <!-- ANALYSIS SECTION -->
+  <div class="analysis-section" id="analysisSection" style="display:none;">
+    <div class="section-header" style="margin-top:32px;">
+      <div class="section-title">
+        ნაბიჯი 3 — სრული ანალიზი
+        <span id="analysisVinLabel"></span>
+      </div>
+    </div>
+
+    <div class="analyze-btn-wrap">
+      <button class="analyze-btn" id="analyzeBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        NHTSA + Claude ანალიზი
+      </button>
+    </div>
+
+    <div id="analyzeLoading" style="display:none;" class="analyze-loading">
+      <div class="spinner-lg"></div>
+      <span>NHTSA და Claude მონაცემები იტვირთება...</span>
+    </div>
+
+    <div id="analyzeError" style="display:none;" class="error-box"></div>
+
+    <div id="analyzeResult" style="display:none;">
+
+      <!-- Summary -->
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-head"><span class="card-label">მიმოხილვა</span></div>
+        <div class="card-body">
+          <p id="analysisSummary" style="font-size:14px;color:var(--text);line-height:1.7;"></p>
+        </div>
+      </div>
+
+      <!-- Specs + Recall grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="card">
+          <div class="card-head"><span class="card-label">ტექნიკური მახასიათებლები</span></div>
+          <div class="card-body">
+            <div class="breakdown" id="specsTable"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-label">VIN სტრუქტურა</span></div>
+          <div class="card-body">
+            <div class="breakdown" id="vinBreakdown"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recall -->
+      <div class="card" id="recallCard" style="margin-bottom:12px;">
+        <div class="card-head">
+          <span class="card-label">Recall სტატუსი</span>
+          <span id="recallBadge"></span>
+        </div>
+        <div class="card-body">
+          <p id="recallNote" style="font-size:13px;color:var(--muted);"></p>
+        </div>
+      </div>
+
+      <!-- Buyer tips -->
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-head"><span class="card-label">მყიდველისთვის რჩევები</span></div>
+        <div class="card-body">
+          <ul id="buyerTips" style="padding-left:16px;display:grid;gap:8px;"></ul>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- FOOTER -->
@@ -837,6 +937,7 @@ removeBtn.addEventListener('click', () => {
   previewWrap.style.display = 'none';
   vinResult.style.display = 'none';
   emptyState.style.display = 'block';
+  analysisSection.style.display = 'none';
   errorBox.style.display = 'none';
   scanBtn.disabled = true;
   fileInput.value = '';
@@ -965,6 +1066,15 @@ function showResult(r) {
   setStep(3);
   renderSites(r.vin);
   showQuickLinks(r.vin);
+
+  // analysis section გამოჩენა
+  document.getElementById('analysisVinLabel').textContent = r.vin;
+  analyzeResult.style.display = 'none';
+  analyzeError.style.display = 'none';
+  analyzeLoading.style.display = 'none';
+  analyzeBtn.disabled = false;
+  analysisSection.style.display = 'block';
+  analysisSection.classList.add('anim-in');
 }
 
 function addRow(label, value) {
@@ -985,6 +1095,110 @@ copyBtn.addEventListener('click', () => {
     }, 2000);
   });
 });
+
+// ═══════════════════════════════════════════
+// ANALYSIS
+// ═══════════════════════════════════════════
+const analysisSection = document.getElementById('analysisSection');
+const analyzeBtn      = document.getElementById('analyzeBtn');
+const analyzeLoading  = document.getElementById('analyzeLoading');
+const analyzeError    = document.getElementById('analyzeError');
+const analyzeResult   = document.getElementById('analyzeResult');
+
+analyzeBtn.addEventListener('click', async () => {
+  if (!currentVin) return;
+  analyzeBtn.disabled = true;
+  analyzeLoading.style.display = 'flex';
+  analyzeError.style.display = 'none';
+  analyzeResult.style.display = 'none';
+
+  try {
+    const resp = await fetch('/.netlify/functions/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vin: currentVin })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      analyzeError.textContent = 'შეცდომა: ' + (data.error || 'უცნობი შეცდომა');
+      analyzeError.style.display = 'flex';
+    } else {
+      showAnalysis(data);
+    }
+  } catch(e) {
+    analyzeError.textContent = 'კავშირის შეცდომა: ' + e.message;
+    analyzeError.style.display = 'flex';
+  }
+
+  analyzeLoading.style.display = 'none';
+  analyzeBtn.disabled = false;
+});
+
+function showAnalysis(data) {
+  const a = data.analysis || {};
+  const n = data.nhtsa || {};
+
+  // summary
+  document.getElementById('analysisSummary').textContent =
+    a.summary || (n.make ? `${n.year} ${n.make} ${n.model}` : 'ანალიზი მიუწვდომელია.');
+
+  // specs table
+  const specsTable = document.getElementById('specsTable');
+  specsTable.innerHTML = '';
+  const specs = a.specs || {
+    'მწარმოებელი': n.make, 'მოდელი': n.model, 'წელი': n.year,
+    'კუზოვი': n.bodyClass, 'ძრავი': n.engineCyl ? n.engineCyl+' ცილინდრი' : '',
+    'საწვავი': n.fuelType, 'წამყვანი': n.driveType, 'ქვეყანა': n.country
+  };
+  Object.entries(specs).forEach(([k, v]) => {
+    if (v) {
+      const row = document.createElement('div');
+      row.className = 'bd-row';
+      row.innerHTML = `<span class="bd-label">${k}</span><span class="bd-value">${v}</span>`;
+      specsTable.appendChild(row);
+    }
+  });
+
+  // vin breakdown
+  const vinBd = document.getElementById('vinBreakdown');
+  vinBd.innerHTML = '';
+  const vb = a.vinBreakdown || {
+    'WMI (1-3)': data.vin.slice(0,3) + ' — მწარმოებელი',
+    'VDS (4-9)': data.vin.slice(3,9) + ' — მოდელი/ძრავი',
+    'VIS (10-17)': data.vin.slice(9) + ' — სერიული'
+  };
+  Object.entries(vb).forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'bd-row';
+    row.innerHTML = `<span class="bd-label" style="font-family:var(--mono);font-size:11px;">${k}</span><span class="bd-value" style="font-size:11px;max-width:55%;text-align:right;">${v}</span>`;
+    vinBd.appendChild(row);
+  });
+
+  // recall
+  const recallCount = n.recallCount || 0;
+  document.getElementById('recallNote').textContent = a.recallNote ||
+    (recallCount > 0 ? `${recallCount} recall ნაპოვნია ამ მანქანაზე.` : 'Recall არ ნაპოვნია.');
+  const badge = document.getElementById('recallBadge');
+  badge.textContent = recallCount > 0 ? `⚠️ ${recallCount}` : '✅ 0';
+  badge.style.cssText = recallCount > 0
+    ? 'font-family:var(--mono);font-size:11px;color:var(--orange);background:var(--orange2);padding:2px 8px;border-radius:10px;'
+    : 'font-family:var(--mono);font-size:11px;color:var(--green);background:var(--green2);padding:2px 8px;border-radius:10px;';
+
+  // buyer tips
+  const tips = document.getElementById('buyerTips');
+  tips.innerHTML = '';
+  const tipsList = a.buyerTips || ['NHTSA-ზე recall შეამოწმეთ', 'VIN ისტორია გადაამოწმეთ EpicVIN-ზე', 'აუქციონის ისტორია BidHistory.org-ზე'];
+  tipsList.forEach(tip => {
+    const li = document.createElement('li');
+    li.textContent = tip;
+    tips.appendChild(li);
+  });
+
+  analyzeResult.style.display = 'block';
+  analyzeResult.classList.add('anim-in');
+  analyzeResult.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 // INIT
 renderSites('');

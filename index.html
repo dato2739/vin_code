@@ -919,7 +919,7 @@ function renderSites(vin='') {
         <div class="site-url">${s.url.replace('https://','').replace('http://','').replace(/\/$/,'')}</div>
         <div class="site-desc">${s.desc}</div>
         <div class="site-tags">${s.tags.map(t=>`<span class="tag ${s.tagClass}">${t}</span>`).join('')}</div>
-        <span class="site-arrow">↗</span>
+        <span class="site-arrow">&#x2197;</span>
       `;
       grid.appendChild(card);
     });
@@ -1134,9 +1134,9 @@ function showResult(r) {
     სრული კოდი: <span style="font-weight:600">${r.vin}</span>
     &nbsp;
     <span style="font-size:11px;font-family:var(--mono);">
-      <span style="color:var(--green)">■</span> ზუსტი &nbsp;
-      <span style="color:var(--accent)">■</span> სავარაუდო &nbsp;
-      <span style="color:var(--danger)">■</span> გაურკვეველი
+      <span style="color:var(--green)">&#x25A0;</span> ზუსტი &nbsp;
+      <span style="color:var(--accent)">&#x25A0;</span> სავარაუდო &nbsp;
+      <span style="color:var(--danger)">&#x25A0;</span> გაურკვეველი
     </span>
     &nbsp;
     <span style="font-size:10px;font-family:var(--mono);color:var(--muted);">— სიმბოლოზე დაჭერით შეცვლა</span>`;
@@ -1154,12 +1154,12 @@ function showResult(r) {
   resultStatus.innerHTML =
     `<span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;"></span>` +
     `<span style="font-family:var(--mono);font-size:11px;color:var(--green)">ნაპოვნია</span>` +
-    (r.matchStatus === 'FULL_MATCH'     ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 3/3</span>` :
-     r.matchStatus === 'MAJORITY_MATCH' ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent2);padding:2px 7px;border-radius:8px;margin-left:6px;">✓ 2/3</span>` :
-     `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:6px;">⚠ 1/3</span>`) +
+    (r.matchStatus === 'FULL_MATCH'     ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:6px;">&#x2713; 3/3</span>` :
+     r.matchStatus === 'MAJORITY_MATCH' ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent2);padding:2px 7px;border-radius:8px;margin-left:6px;">&#x2713; 2/3</span>` :
+     `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:6px;">&#x26A0; 1/3</span>`) +
     (r.checkDigitValid
-      ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:4px;">✓ check</span>`
-      : `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:4px;">✗ check</span>`);
+      ? `<span style="font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green2);padding:2px 7px;border-radius:8px;margin-left:4px;">&#x2713; check</span>`
+      : `<span style="font-family:var(--mono);font-size:10px;color:var(--danger);background:var(--danger2);padding:2px 7px;border-radius:8px;margin-left:4px;">&#x2717; check</span>`);
 
   vinResult.style.display = 'block';
   vinResult.classList.add('anim-in');
@@ -1278,7 +1278,7 @@ function applyManualChars(chars) {
     wmi: vin.slice(0,3), vds: vin.slice(3,9), vis: vin.slice(9,17),
     matchStatus: 'MANUAL',
     checkDigitValid: cdOk,
-    notes: `ხელით კორექტირებული | check:${cdOk?'✓':'✗'}`
+    notes: `ხელით კორექტირებული | check:${cdOk?'&#x2713;':'&#x2717;'}`
   });
 }
 
@@ -1341,7 +1341,7 @@ function isValidVin(vin) {
 editBtn.addEventListener('click', () => {
   editVinInput.value = currentVin;
   editVinWrap.style.display = 'block';
-  editVinHint.textContent = '17 სიმბოლო • A-Z (I,O,Q გარეშე) და 0-9';
+  editVinHint.textContent = '17 სიმბოლო · A-Z (I,O,Q გარეშე) და 0-9';
   editVinHint.className = 'edit-vin-hint';
   editConfirmBtn.disabled = false;
   editVinInput.focus();
@@ -1358,14 +1358,14 @@ editVinInput.addEventListener('input', function() {
   const len = val.length;
 
   if (len === 0) {
-    editVinHint.textContent = '17 სიმბოლო • A-Z (I,O,Q გარეშე) და 0-9';
+    editVinHint.textContent = '17 სიმბოლო · A-Z (I,O,Q გარეშე) და 0-9';
     editVinHint.className = 'edit-vin-hint';
     this.classList.remove('valid','invalid');
     editConfirmBtn.disabled = true;
   } else if (isValidVin(val)) {
     const cd = calcCheckDigit(val);
     const cdOk = cd === val[8];
-    editVinHint.textContent = `✓ სწორი VIN — ${len}/17` + (cdOk ? ' • ✓ check digit' : ' • ⚠ check digit არ ემთხვევა (შეამოწმეთ)');
+    editVinHint.textContent = `&#x2713; სწორი VIN — ${len}/17` + (cdOk ? ' · &#x2713; check digit' : ' · &#x26A0; check digit არ ემთხვევა (შეამოწმეთ)');
     editVinHint.className = 'edit-vin-hint ' + (cdOk ? 'ok' : '');
     this.classList.add('valid'); this.classList.remove('invalid');
     editConfirmBtn.disabled = false;
